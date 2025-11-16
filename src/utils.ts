@@ -17,6 +17,15 @@ function isValidToolName<K extends PropertyKey, T extends object>(
 }
 
 /**
+ * Type for tool execution functions
+ * Each execution function receives the tool input and context, returning a promise
+ */
+type ToolExecutionFunction = (
+  args: unknown,
+  context: ToolCallOptions
+) => Promise<unknown>;
+
+/**
  * Processes tool invocations where human input is required, executing tools when authorized.
  */
 export async function processToolCalls<Tools extends ToolSet>({
@@ -27,11 +36,7 @@ export async function processToolCalls<Tools extends ToolSet>({
   tools: Tools; // used for type inference
   dataStream: UIMessageStreamWriter;
   messages: UIMessage[];
-  executions: Record<
-    string,
-    // biome-ignore lint/suspicious/noExplicitAny: needs a better type
-    (args: any, context: ToolCallOptions) => Promise<unknown>
-  >;
+  executions: Record<string, ToolExecutionFunction>;
 }): Promise<UIMessage[]> {
   // Process all messages, not just the last one
   const processedMessages = await Promise.all(

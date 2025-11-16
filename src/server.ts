@@ -16,14 +16,8 @@ import {
 import { openai } from "@ai-sdk/openai";
 import { processToolCalls, cleanupMessages } from "./utils";
 import { tools, executions } from "./tools";
-// import { env } from "cloudflare:workers";
 
 const model = openai("gpt-4o-2024-11-20");
-// Cloudflare AI Gateway
-// const openai = createOpenAI({
-//   apiKey: env.OPENAI_API_KEY,
-//   baseURL: env.GATEWAY_BASE_URL,
-// });
 
 /**
  * Chat Agent implementation that handles real-time AI chat interactions
@@ -36,10 +30,6 @@ export class Chat extends AIChatAgent<Env> {
     onFinish: StreamTextOnFinishCallback<ToolSet>,
     _options?: { abortSignal?: AbortSignal }
   ) {
-    // const mcpConnection = await this.mcp.connect(
-    //   "https://path-to-mcp-server/sse"
-    // );
-
     // Collect all tools, including MCP tools
     const allTools = {
       ...tools,
@@ -61,11 +51,21 @@ export class Chat extends AIChatAgent<Env> {
         });
 
         const result = streamText({
-          system: `You are a helpful assistant that can do various tasks... 
+          system: `You are a helpful AI assistant with access to various tools and capabilities.
+
+Your capabilities include:
+- Getting weather information for any city (requires user confirmation)
+- Getting local time for different locations
+- Scheduling tasks (one-time, delayed, or recurring via cron)
+- Managing scheduled tasks (listing and canceling)
 
 ${getSchedulePrompt({ date: new Date() })}
 
-If the user asks to schedule a task, use the schedule tool to schedule the task.
+Guidelines:
+- Always be helpful, accurate, and concise
+- When scheduling tasks, use the schedule tool appropriately
+- If the user asks to schedule a task, use the schedule tool to schedule the task
+- Provide clear explanations of what you're doing
 `,
 
           messages: convertToModelMessages(processedMessages),
@@ -113,14 +113,19 @@ export default {
     const url = new URL(request.url);
 
     if (url.pathname === "/check-open-ai-key") {
-      const hasOpenAIKey = !!process.env.OPENAI_API_KEY;
+      // Check if OPENAI_API_KEY is available in the environment
+      // In Cloudflare Workers, secrets are accessed via env object
+      const hasOpenAIKey = !!(env as { OPENAI_API_KEY?: string })
+        .OPENAI_API_KEY;
       return Response.json({
         success: hasOpenAIKey
       });
     }
-    if (!process.env.OPENAI_API_KEY) {
+
+    // Log warning if API key is not set (for development)
+    if (!(env as { OPENAI_API_KEY?: string }).OPENAI_API_KEY) {
       console.error(
-        "OPENAI_API_KEY is not set, don't forget to set it locally in .dev.vars, and use `wrangler secret bulk .dev.vars` to upload it to production"
+        "OPENAI_API_KEY is not set. Set it locally in .dev.vars, and use `wrangler secret put OPENAI_API_KEY` to upload it to production"
       );
     }
     return (

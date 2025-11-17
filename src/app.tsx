@@ -1,5 +1,5 @@
 /** biome-ignore-all lint/correctness/useUniqueElementIds: it's alright */
-import { useEffect, useState, useRef, useCallback, use } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import { useAgent } from "agents/react";
 import { isToolUIPart } from "ai";
 import { useAgentChat } from "agents/ai-react";
@@ -23,7 +23,9 @@ import {
   Stop20Regular,
   Chat48Regular,
   Dismiss20Regular,
-  Maximize20Regular
+  Maximize20Regular,
+  Person20Regular,
+  Add20Regular
 } from "@fluentui/react-icons";
 
 // List of tools that require human confirmation
@@ -32,7 +34,31 @@ const toolsRequiringConfirmation: (keyof typeof tools)[] = [
   "getWeatherInformation"
 ];
 
+// Función para generar o obtener un ID único de conversación desde la URL
+function getConversationId(): string {
+  // Verificar si hay un ID en la URL
+  const urlParams = new URLSearchParams(window.location.search);
+  const urlChatId = urlParams.get("chat");
+  
+  if (urlChatId) {
+    // Si hay un ID en la URL, usarlo
+    return urlChatId;
+  }
+  
+  // Si no hay ID en la URL, generar uno nuevo y agregarlo a la URL
+  const newChatId = crypto.randomUUID();
+  const newUrl = new URL(window.location.href);
+  newUrl.searchParams.set("chat", newChatId);
+  // Actualizar la URL sin recargar la página
+  window.history.replaceState({}, "", newUrl.toString());
+  
+  return newChatId;
+}
+
 export default function Chat() {
+  // Generar o obtener ID único de conversación desde la URL
+  const [conversationId] = useState<string>(() => getConversationId());
+  
   const [theme, setTheme] = useState<"dark" | "light">(() => {
     // Check localStorage first, default to dark if not found
     const savedTheme = localStorage.getItem("theme");
@@ -40,6 +66,8 @@ export default function Chat() {
   });
   const [showDebug, setShowDebug] = useState(false);
   const [showPrivacyBanner, setShowPrivacyBanner] = useState(true);
+  const [humanAgentMode, setHumanAgentMode] = useState(false);
+  const [agentResponseInput, setAgentResponseInput] = useState("");
   const [textareaHeight, setTextareaHeight] = useState("auto");
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -71,9 +99,43 @@ export default function Chat() {
     setTheme(newTheme);
   };
 
+  // Usar el ID único de conversación como name para crear una instancia privada del agente
   const agent = useAgent({
-    agent: "chat"
+    agent: "chat",
+    name: conversationId
   });
+
+  // Función para enviar mensaje manual como agente humano
+  const sendManualAgentMessage = async (message: string) => {
+    if (!message.trim()) return;
+
+    try {
+      // Usar el ID único de conversación
+      const agentId = conversationId;
+
+      const response = await fetch("/send-manual-message", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          agentId,
+          message
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to send manual message");
+      }
+
+      // Recargar mensajes para mostrar el nuevo mensaje
+      // El hook useAgentChat debería actualizarse automáticamente
+      setAgentResponseInput("");
+    } catch (error) {
+      console.error("Error sending manual message:", error);
+      alert("Error al enviar mensaje. Por favor intenta de nuevo.");
+    }
+  };
 
   const [agentInput, setAgentInput] = useState("");
   const handleAgentInputChange = (
@@ -136,6 +198,15 @@ export default function Chat() {
     return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   };
 
+  // Función para crear una nueva conversación
+  const createNewConversation = () => {
+    if (confirm("¿Estás seguro de que quieres crear una nueva conversación? La conversación actual se guardará.")) {
+      const newChatId = crypto.randomUUID();
+      // Recargar la página con el nuevo ID en la URL
+      window.location.href = `/?chat=${newChatId}`;
+    }
+  };
+
   return (
     <div className="h-[100vh] w-full flex justify-center items-center overflow-hidden bg-neutral-100 dark:bg-black p-2">
       <HasOpenAIKey />
@@ -160,29 +231,44 @@ export default function Chat() {
               variant="ghost"
               size="md"
               shape="square"
-              className="h-8 w-8 hover:bg-neutral-200 dark:hover:bg-neutral-700 text-neutral-700 dark:text-white"
+              className="h-8 w-8 hover:bg-blue-50 dark:hover:bg-blue-900/20 active:bg-blue-100 dark:active:bg-blue-900/30 rounded-lg transition-colors flex items-center justify-center p-0"
+              onClick={createNewConversation}
+              tooltip="Nueva conversación"
+              aria-label="Nueva conversación"
+            >
+              <Add20Regular className="w-5 h-5 text-[#007AFF] dark:text-blue-400" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="md"
+              shape="square"
+              className="h-8 w-8 hover:bg-blue-50 dark:hover:bg-blue-900/20 active:bg-blue-100 dark:active:bg-blue-900/30 rounded-lg transition-colors flex items-center justify-center p-0"
               onClick={toggleTheme}
+              tooltip="Cambiar tema"
+              aria-label="Cambiar tema"
             >
               {theme === "dark" ? (
-                <WeatherSunny20Regular />
+                <WeatherSunny20Regular className="w-5 h-5 text-[#007AFF] dark:text-blue-400" />
               ) : (
-                <WeatherMoon20Regular />
+                <WeatherMoon20Regular className="w-5 h-5 text-[#007AFF] dark:text-blue-400" />
               )}
             </Button>
             <Button
               variant="ghost"
               size="md"
               shape="square"
-              className="h-8 w-8 hover:bg-neutral-200 dark:hover:bg-neutral-700 text-neutral-700 dark:text-white"
+              className="h-8 w-8 hover:bg-blue-50 dark:hover:bg-blue-900/20 active:bg-blue-100 dark:active:bg-blue-900/30 rounded-lg transition-colors flex items-center justify-center p-0"
               onClick={() => {}}
+              tooltip="Maximizar"
+              aria-label="Maximizar"
             >
-              <Maximize20Regular />
+              <Maximize20Regular className="w-5 h-5 text-[#007AFF] dark:text-blue-400" />
             </Button>
           </div>
         </div>
 
         {/* Messages */}
-        <div className="flex-1 overflow-y-auto bg-white dark:bg-black scroll-smooth">
+        <div className="flex-1 overflow-y-auto bg-neutral-50 dark:bg-neutral-950 scroll-smooth scrollbar-hide">
           {agentMessages.length === 0 && (
             <div className="h-full flex items-center justify-center p-6">
               <div className="text-center space-y-6">
@@ -208,33 +294,28 @@ export default function Chat() {
             </div>
           )}
 
-          <div className="p-4 space-y-4 pb-24">
+          <div className="p-3 pb-24">
             {agentMessages.map((m, index) => {
               const isUser = m.role === "user";
-              const showAvatar =
-                index === 0 || agentMessages[index - 1]?.role !== m.role;
+              const prevMessage = index > 0 ? agentMessages[index - 1] : null;
+              const isSameSender = prevMessage?.role === m.role;
+              const showSpacing = !isSameSender;
 
               return (
-                <div key={m.id} className="animate-fade-in">
+                <div 
+                  key={m.id} 
+                  className={`animate-fade-in ${showSpacing ? "mt-4" : "mt-1"}`}
+                >
                   {showDebug && (
                     <pre className="text-xs text-neutral-600 dark:text-neutral-400 overflow-scroll mb-2 p-3 bg-neutral-100 dark:bg-neutral-800 rounded">
                       {JSON.stringify(m, null, 2)}
                     </pre>
                   )}
                   <div
-                    className={`flex ${isUser ? "justify-end" : "justify-start"} items-end gap-3`}
+                    className={`flex ${isUser ? "justify-end" : "justify-start"} items-end`}
                   >
-                    {!isUser && showAvatar && (
-                      <div className="flex-shrink-0">
-                        <div className="h-8 w-8 rounded-full bg-neutral-200 dark:bg-neutral-700 flex items-center justify-center">
-                          <Bot20Regular className="text-neutral-700 dark:text-neutral-300" />
-                        </div>
-                      </div>
-                    )}
-                    {!isUser && !showAvatar && <div className="w-8" />}
-
                     <div
-                      className={`flex flex-col gap-1 max-w-[80%] ${isUser ? "items-end" : "items-start"}`}
+                      className={`flex flex-col max-w-[75%] ${isUser ? "items-end" : "items-start"}`}
                     >
                       {m.parts?.map((part, i) => {
                         if (part.type === "text") {
@@ -242,15 +323,19 @@ export default function Chat() {
                             // biome-ignore lint/suspicious/noArrayIndexKey: immutable index
                             <div key={i} className="group">
                               <div
-                                className={`px-4 py-2.5 rounded-xl ${
+                                className={`px-3.5 py-2 rounded-2xl ${
                                   isUser
-                                    ? "bg-blue-600 dark:bg-neutral-700 text-white rounded-tr-sm"
-                                    : "bg-neutral-100 dark:bg-neutral-800 text-neutral-900 dark:text-neutral-200 border border-neutral-200 dark:border-neutral-700 rounded-tl-sm"
+                                    ? "bg-[#007AFF] text-white rounded-br-sm shadow-sm"
+                                    : "bg-neutral-200 dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100 rounded-bl-sm"
                                 } ${
                                   part.text.startsWith("scheduled message")
                                     ? "border-2 border-[#F48120]/50"
                                     : ""
                                 } relative`}
+                                style={{
+                                  wordBreak: "break-word",
+                                  overflowWrap: "break-word"
+                                }}
                               >
                                 {part.text.startsWith("scheduled message") && (
                                   <span className="absolute -top-2 -left-2 text-xl bg-neutral-900 rounded-full p-1">
@@ -260,8 +345,8 @@ export default function Chat() {
                                 <div
                                   className={
                                     isUser
-                                      ? "prose prose-invert prose-sm max-w-none text-white"
-                                      : "prose prose-sm dark:prose-invert max-w-none text-neutral-900 dark:text-neutral-200"
+                                      ? "prose prose-invert prose-sm max-w-none text-white [&_*]:text-white [&_a]:text-blue-200 [&_a:hover]:text-blue-100"
+                                      : "prose prose-sm dark:prose-invert max-w-none text-neutral-900 dark:text-neutral-100 [&_*]:text-neutral-900 dark:[&_*]:text-neutral-100"
                                   }
                                 >
                                   <MemoizedMarkdown
@@ -273,17 +358,6 @@ export default function Chat() {
                                   />
                                 </div>
                               </div>
-                              <p
-                                className={`text-xs text-neutral-500 dark:text-neutral-500 mt-1 px-1 ${
-                                  isUser ? "text-right" : "text-left"
-                                }`}
-                              >
-                                {formatTime(
-                                  m.metadata?.createdAt
-                                    ? new Date(m.metadata.createdAt)
-                                    : new Date()
-                                )}
-                              </p>
                             </div>
                           );
                         }
@@ -383,7 +457,7 @@ export default function Chat() {
                     ? "Please respond to the tool confirmation above..."
                     : "Ask a question to get started..."
                 }
-                className="flex w-full border border-neutral-300 dark:border-neutral-600 px-4 py-3 placeholder:text-neutral-400 dark:placeholder:text-neutral-500 focus-visible:outline-none focus-visible:border-blue-500 dark:focus-visible:border-neutral-500 disabled:cursor-not-allowed disabled:opacity-50 text-sm min-h-[44px] max-h-[calc(75dvh)] overflow-hidden resize-none rounded-xl bg-white dark:bg-neutral-900 text-neutral-900 dark:text-white"
+                className="flex w-full px-4 py-3 placeholder:text-neutral-500 dark:placeholder:text-neutral-400 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50 text-sm min-h-[44px] max-h-[calc(75dvh)] overflow-hidden resize-none rounded-2xl bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 border border-neutral-200 dark:border-neutral-700 focus-visible:border-blue-500 dark:focus-visible:border-blue-500/50 focus-visible:bg-white dark:focus-visible:bg-neutral-900 transition-all shadow-sm"
                 value={agentInput}
                 onChange={(e) => {
                   handleAgentInputChange(e);
@@ -451,14 +525,29 @@ export default function Chat() {
   );
 }
 
-const hasOpenAiKeyPromise = fetch("/check-open-ai-key").then((res) =>
-  res.json<{ success: boolean }>()
-);
-
 function HasOpenAIKey() {
-  const hasOpenAiKey = use(hasOpenAiKeyPromise);
+  const [hasOpenAiKey, setHasOpenAiKey] = useState<{ success: boolean } | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
 
-  if (!hasOpenAiKey.success) {
+  useEffect(() => {
+    fetch("/check-open-ai-key")
+      .then((res) => res.json<{ success: boolean }>())
+      .then((data) => {
+        setHasOpenAiKey(data);
+        setIsLoading(false);
+      })
+      .catch((error) => {
+        console.error("Error checking OpenAI key:", error);
+        setHasOpenAiKey({ success: false });
+        setIsLoading(false);
+      });
+  }, []);
+
+  if (isLoading) {
+    return null;
+  }
+
+  if (!hasOpenAiKey?.success) {
     return (
       <div className="fixed top-0 left-0 right-0 z-50 bg-red-500/10 backdrop-blur-sm">
         <div className="max-w-3xl mx-auto p-4">

@@ -25,7 +25,9 @@ import {
   Dismiss20Regular,
   Maximize20Regular,
   Person20Regular,
-  Add20Regular
+  Add20Regular,
+  Copy20Regular,
+  Checkmark20Regular
 } from "@fluentui/react-icons";
 
 // List of tools that require human confirmation
@@ -177,10 +179,12 @@ export default function Chat() {
     agent
   });
 
-  // Scroll to bottom when messages change
+  // Scroll to bottom when messages change or when status changes (para el indicador "escribiendo...")
   useEffect(() => {
-    agentMessages.length > 0 && scrollToBottom();
-  }, [agentMessages, scrollToBottom]);
+    if (agentMessages.length > 0 || status === "streaming" || status === "submitted") {
+      scrollToBottom();
+    }
+  }, [agentMessages, status, scrollToBottom]);
 
   const pendingToolCallConfirmation = agentMessages.some((m: UIMessage) =>
     m.parts?.some(
@@ -196,6 +200,36 @@ export default function Chat() {
 
   const formatTime = (date: Date) => {
     return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  };
+
+  // Estado para controlar qué mensaje se copió
+  const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
+
+  // Función para copiar mensaje al portapapeles
+  const copyToClipboard = async (text: string, messageId: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedMessageId(messageId);
+      // Resetear después de 2 segundos
+      setTimeout(() => setCopiedMessageId(null), 2000);
+    } catch (error) {
+      console.error("Error copying to clipboard:", error);
+      // Fallback para navegadores antiguos
+      const textArea = document.createElement("textarea");
+      textArea.value = text;
+      textArea.style.position = "fixed";
+      textArea.style.opacity = "0";
+      document.body.appendChild(textArea);
+      textArea.select();
+      try {
+        document.execCommand("copy");
+        setCopiedMessageId(messageId);
+        setTimeout(() => setCopiedMessageId(null), 2000);
+      } catch (err) {
+        console.error("Fallback copy failed:", err);
+      }
+      document.body.removeChild(textArea);
+    }
   };
 
   // Función para crear una nueva conversación
@@ -321,7 +355,7 @@ export default function Chat() {
                         if (part.type === "text") {
                           return (
                             // biome-ignore lint/suspicious/noArrayIndexKey: immutable index
-                            <div key={i} className="group">
+                            <div key={i} className="group relative">
                               <div
                                 className={`px-3.5 py-2 rounded-2xl ${
                                   isUser
@@ -358,6 +392,22 @@ export default function Chat() {
                                   />
                                 </div>
                               </div>
+                              {/* Botón de copiar - visible en hover */}
+                              <button
+                                type="button"
+                                onClick={() => copyToClipboard(part.text, `${m.id}-${i}`)}
+                                className={`absolute ${
+                                  isUser ? "left-0 -translate-x-10" : "right-0 translate-x-10"
+                                } top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity p-1.5 rounded-lg bg-neutral-100 dark:bg-neutral-700 hover:bg-neutral-200 dark:hover:bg-neutral-600 text-neutral-600 dark:text-neutral-300 hover:text-neutral-900 dark:hover:text-neutral-100`}
+                                title="Copiar mensaje"
+                                aria-label="Copiar mensaje"
+                              >
+                                {copiedMessageId === `${m.id}-${i}` ? (
+                                  <Checkmark20Regular className="w-4 h-4 text-green-600 dark:text-green-400" />
+                                ) : (
+                                  <Copy20Regular className="w-4 h-4" />
+                                )}
+                              </button>
                             </div>
                           );
                         }
@@ -407,6 +457,48 @@ export default function Chat() {
                 </div>
               );
             })}
+            
+            {/* Indicador "escribiendo..." cuando la IA está generando respuesta */}
+            {(() => {
+              // Verificar si el último mensaje es del asistente y tiene contenido completo
+              const lastMessage = agentMessages[agentMessages.length - 1];
+              const lastMessageIsAssistant = lastMessage?.role === "assistant";
+              
+              // Verificar si el mensaje del asistente tiene contenido significativo
+              const hasCompleteText = lastMessageIsAssistant && 
+                lastMessage.parts?.some(p => {
+                  if (p.type === "text") {
+                    const text = (p as { text: string }).text;
+                    // Considerar completo si tiene al menos 5 caracteres
+                    return text && text.trim().length >= 5;
+                  }
+                  return false;
+                });
+              
+              // Solo mostrar si:
+              // 1. Está en estado "streaming" (no "submitted" porque ese es el estado inicial)
+              // 2. El último mensaje es del usuario O no hay mensaje del asistente completo
+              const shouldShowTyping = status === "streaming" && 
+                (!lastMessageIsAssistant || !hasCompleteText);
+              
+              return shouldShowTyping ? (
+                <div className="animate-fade-in mt-4 flex justify-start items-end">
+                  <div className="flex flex-col max-w-[75%] items-start">
+                    <div className="px-3.5 py-2 rounded-2xl rounded-bl-sm bg-neutral-200 dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-sm text-neutral-500 dark:text-neutral-400">Escribiendo</span>
+                        <div className="flex gap-1">
+                          <span className="w-1.5 h-1.5 bg-neutral-400 dark:bg-neutral-500 rounded-full animate-bounce" style={{ animationDelay: "0ms" }}></span>
+                          <span className="w-1.5 h-1.5 bg-neutral-400 dark:bg-neutral-500 rounded-full animate-bounce" style={{ animationDelay: "150ms" }}></span>
+                          <span className="w-1.5 h-1.5 bg-neutral-400 dark:bg-neutral-500 rounded-full animate-bounce" style={{ animationDelay: "300ms" }}></span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ) : null;
+            })()}
+            
             <div ref={messagesEndRef} />
           </div>
         </div>
